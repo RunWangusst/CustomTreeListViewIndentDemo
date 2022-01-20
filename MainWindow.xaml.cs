@@ -102,48 +102,39 @@ namespace DXSample
         {
             if (focusedNode.VisibleIndex == 0)
                 return;
-            // 查找当前节点 同一层级的前一个节点
             var parentNode = focusedNode.ParentNode;
-            // 父节点为空，则查找前一个节点
-            TreeListNode previousNode = null;
-            if (null == parentNode)
-            {
-                previousNode = feedStatusTreeListView.GetNodeByVisibleIndex(focusedNode.VisibleIndex - 1);
-                if (previousNode.Level - focusedNode.Level == 1)
-                    previousNode = previousNode.ParentNode;
-            }
-            else
-            {
-                var siblingNodes = parentNode.Nodes;
-                if (siblingNodes.IndexOf(focusedNode) == 0)
-                    previousNode = focusedNode.ParentNode;
-                else
-                    previousNode = siblingNodes[siblingNodes.IndexOf(focusedNode) - 1]; // 当前节点同一层级的前一个节点，作为缩进后的父节点
-            }
-
-            if (focusedNode.Level - previousNode?.Level == 1)
+            var siblingNodes = null == parentNode ? feedStatusTreeListView.Nodes : parentNode.Nodes;
+            if (siblingNodes.IndexOf(focusedNode) == 0)
                 return;
-            var parentRowView = previousNode.Content as DataRowView;
+            // 查找当前节点的上一个节点（作为当前节点的父节点）
+            var previousNode = siblingNodes[siblingNodes.IndexOf(focusedNode) - 1]; // 当前节点同一层级的前一个节点，作为缩进后的父节点
+
             var focusedRowView = focusedNode.Content as DataRowView;
-            focusedRowView.Row["ParentID"] = parentRowView["EventLogID"];
+            focusedRowView.Row["ParentID"] = (previousNode.Content as DataRowView)["EventLogID"];
             feedStatusTreeListView.FocusedNode.ParentNode.ExpandAll();
 
-            if (previousNode.Nodes.Count > 0)
+            var newPreviousNode = previousNode.Nodes.Count > 0 ? previousNode.Nodes.LastOrDefault() : previousNode;
+            // 插入到 newPreviousNode 的所有子节点的后面
+            var node = GetLastChildNode(newPreviousNode);
+            var drr = newPreviousNode.Content as DataRowView;
+            //int newIndex = feedStatusTreeListView.GetNodeVisibleIndex(feedStatusTreeListView.GetNodeByContent(drr));
+            var focusedIndex = dt.Rows.IndexOf(focusedRowView.Row);
+            var newIndex = dt.Rows.IndexOf(drr.Row);
+            var dr = dt.NewRow();
+            dr.ItemArray = focusedRowView.Row.ItemArray;
+            dt.Rows.Remove(focusedRowView.Row);
+            dt.Rows.InsertAt(dr, focusedIndex < newIndex ? newIndex : newIndex + 1);
+            dr.AcceptChanges();
+            dr["state"] = "1";
+            DataRowView tempRowView = null;
+            for (int i = 0; i < dt.DefaultView.Count; i++)
             {
-                var newPreviousNode = previousNode.Nodes.LastOrDefault();
-                // 插入到 newPreviousNode 的所有子节点的后面
-                var node = GetLastChildNode(newPreviousNode);
-                var newIndex = dt.Rows.IndexOf((node.Content as DataRowView).Row);
-                var dr = dt.NewRow();
-                dr.ItemArray = focusedRowView.Row.ItemArray;
-                dt.Rows.Remove(focusedRowView.Row);
-                dt.Rows.InsertAt(dr, newIndex);
-                dr.AcceptChanges();
-                dr["state"] = "1";
-                DataRowView tempRowView = GetRowView(dr);
-                feedStatusTreeListView.MoveFocusedRow(feedStatusTreeListView.GetNodeVisibleIndex(feedStatusTreeListView.GetNodeByContent(tempRowView)));
-                feedStatusTreeListView.ExpandNode(feedStatusTreeListView.GetNodeVisibleIndex(feedStatusTreeListView.GetNodeByContent(tempRowView)));
+                if (dt.DefaultView[i].Row == dr)
+                    tempRowView = dt.DefaultView[i];
             }
+            int currentNodeIndex = feedStatusTreeListView.GetNodeVisibleIndex(feedStatusTreeListView.GetNodeByContent(tempRowView));
+            feedStatusTreeListView.MoveFocusedRow(currentNodeIndex);
+            feedStatusTreeListView.ExpandNode(currentNodeIndex);
             PrintRows(dt);
         }
 
@@ -171,22 +162,18 @@ namespace DXSample
         /// <param name="focusedNode"></param>
         private void OutdentNode(TreeListNode focusedNode)
         {
+            PrintRows(dt);
             if (focusedNode.Level == 0)
                 return;
-
-            // 查找当前节点 同一层级的前一个节点
-            var parentNode = focusedNode.ParentNode;
-            var siblingNodes = parentNode.Nodes;
-            TreeListNode previousNode;
-            if (siblingNodes.IndexOf(focusedNode) == 0)
-                previousNode = focusedNode.ParentNode;
-            else
-                previousNode = siblingNodes[siblingNodes.IndexOf(focusedNode) - 1]; // 当前节点同一层级的前一个节点，作为缩进后的父节点
+            // 找到 CurrentNode 当前节点的父节点作为该节点的上一个节点 PreviousNode 
+            var previousNode = focusedNode.ParentNode;
+            TreeListNode parentNode = previousNode.ParentNode;
             // 同一层级后面的节点作为当前节点的子节点
-            var newParentNode = parentNode.ParentNode;
             var focusedRow = (focusedNode.Content as DataRowView).Row;
-            focusedRow["ParentID"] = newParentNode == null ? -1 : (newParentNode.Content as DataRowView)["EventLogID"];
+            focusedRow["ParentID"] = parentNode == null ? -1 : (parentNode.Content as DataRowView)["EventLogID"];
+            feedStatusTreeListView.FocusedNode.ParentNode?.ExpandAll();
             // 当前节点的所有兄弟节点作为其子节点
+            var siblingNodes = previousNode.Nodes;
             if (siblingNodes.IndexOf(focusedNode) + 1 < siblingNodes.Count)
             {
                 var firstSiblingIndex = dt.Rows.IndexOf((siblingNodes[siblingNodes.IndexOf(focusedNode) + 1]?.Content as DataRowView).Row);
@@ -208,18 +195,16 @@ namespace DXSample
                 (node.Content as DataRowView).Row["ParentID"] = focusedRow["EventLogID"];
             }
 
-
             var ptRowView = previousNode.Content as DataRowView;
             var focusedRowView = focusedNode.Content as DataRowView;
+            int focusedIndex = dt.Rows.IndexOf(focusedRowView.Row);
             int index = dt.Rows.IndexOf(ptRowView.Row);
             var dr = dt.NewRow();
             dr.ItemArray = focusedRowView.Row.ItemArray;
             dt.Rows.Remove(focusedRowView.Row);
-            dt.Rows.InsertAt(dr, index + 1);
+            dt.Rows.InsertAt(dr, focusedIndex < index ? index : index + 1);
             dr.AcceptChanges();
             dr["state"] = "1";
-            feedStatusTreeListView.PostEditor();
-            feedStatusTreeList.RefreshData();
             DataRowView tempRowView = GetRowView(dr);
             for (int i = 0; i < dt.DefaultView.Count; i++)
             {
