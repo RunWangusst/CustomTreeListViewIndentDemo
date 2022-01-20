@@ -25,7 +25,7 @@ namespace DXSample
             dt.Columns.Add("ParentID", typeof(int));
             dt.Columns.Add("Name", typeof(string));
             dt.Columns.Add("state", typeof(string));
-            dt.Rows.Add(new object[] { 0, 0, "Root" });
+            dt.Rows.Add(new object[] { 0, -1, "Root" });
             dt.Rows.Add(new object[] { 1, 0, "Child 1" });
             dt.Rows.Add(new object[] { 2, 1, "Child 2" });
             dt.Rows.Add(new object[] { 3, 1, "Child 3" });
@@ -100,15 +100,28 @@ namespace DXSample
         /// <param name="focusedNode"></param>
         private void IndentNode(TreeListNode focusedNode)
         {
+            if (focusedNode.VisibleIndex == 0)
+                return;
             // 查找当前节点 同一层级的前一个节点
             var parentNode = focusedNode.ParentNode;
-            var siblingNodes = parentNode.Nodes;
-            TreeListNode previousNode;
-            if (siblingNodes.IndexOf(focusedNode) == 0)
-                previousNode = focusedNode.ParentNode;
+            // 父节点为空，则查找前一个节点
+            TreeListNode previousNode = null;
+            if (null == parentNode)
+            {
+                previousNode = feedStatusTreeListView.GetNodeByVisibleIndex(focusedNode.VisibleIndex - 1);
+                if (previousNode.Level - focusedNode.Level == 1)
+                    previousNode = previousNode.ParentNode;
+            }
             else
-                previousNode = siblingNodes[siblingNodes.IndexOf(focusedNode) - 1]; // 当前节点同一层级的前一个节点，作为缩进后的父节点
-            if (focusedNode.Level - previousNode.Level == 1)
+            {
+                var siblingNodes = parentNode.Nodes;
+                if (siblingNodes.IndexOf(focusedNode) == 0)
+                    previousNode = focusedNode.ParentNode;
+                else
+                    previousNode = siblingNodes[siblingNodes.IndexOf(focusedNode) - 1]; // 当前节点同一层级的前一个节点，作为缩进后的父节点
+            }
+
+            if (focusedNode.Level - previousNode?.Level == 1)
                 return;
             var parentRowView = previousNode.Content as DataRowView;
             var focusedRowView = focusedNode.Content as DataRowView;
@@ -172,7 +185,7 @@ namespace DXSample
             // 同一层级后面的节点作为当前节点的子节点
             var newParentNode = parentNode.ParentNode;
             var focusedRow = (focusedNode.Content as DataRowView).Row;
-            focusedRow["ParentID"] = newParentNode == null ? 0 : (newParentNode.Content as DataRowView)["EventLogID"];
+            focusedRow["ParentID"] = newParentNode == null ? -1 : (newParentNode.Content as DataRowView)["EventLogID"];
             // 当前节点的所有兄弟节点作为其子节点
             if (siblingNodes.IndexOf(focusedNode) + 1 < siblingNodes.Count)
             {
@@ -207,7 +220,7 @@ namespace DXSample
             dr["state"] = "1";
             feedStatusTreeListView.PostEditor();
             feedStatusTreeList.RefreshData();
-            DataRowView tempRowView = null;
+            DataRowView tempRowView = GetRowView(dr);
             for (int i = 0; i < dt.DefaultView.Count; i++)
             {
                 if (dt.DefaultView[i].Row == dr)
